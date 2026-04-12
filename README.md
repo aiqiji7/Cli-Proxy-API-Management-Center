@@ -1,6 +1,6 @@
 > This repository is the management panel for **CLIProxyAPIPlus**, forked from the original [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) management panel. It adds quota displays for **Kiro** and **GitHub Copilot**.
 
-# CLI Proxy API Management Center
+# CLI Proxy API Plus Management Center
 
 A single-file Web UI (React + TypeScript) for operating and troubleshooting the **CLI Proxy API** via its **Management API** (config, credentials, logs, and usage).
 

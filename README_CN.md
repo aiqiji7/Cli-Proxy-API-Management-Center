@@ -1,4 +1,4 @@
-# CLI Proxy API 管理中心
+# CLI Proxy API Plus 管理中心
 
 这是 **CLIProxyAPIPlus** 的管理面板，基于原版 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) 的管理面板 fork 而来，并新增了 **Kiro** 和 **GitHub Copilot** 的配额显示。
 
