@@ -229,3 +229,10 @@ export const COPILOT_REQUEST_HEADERS = {
   Accept: 'application/json',
   'User-Agent': 'CLIProxyAPIPlus',
 };
+
+// xAI/Grok API configuration
+export const XAI_BILLING_URL = 'https://cli-chat-proxy.grok.com/v1/billing';
+
+export const XAI_REQUEST_HEADERS = {
+  Authorization: 'Bearer $TOKEN$',
+};

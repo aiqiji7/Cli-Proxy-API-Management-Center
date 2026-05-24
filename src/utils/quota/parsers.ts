@@ -11,6 +11,7 @@ import type {
   KiroQuotaErrorPayload,
   KiroQuotaPayload,
   CopilotQuotaPayload,
+  XaiBillingPayload,
 } from '@/types';
 import { normalizeAuthIndex } from '@/utils/authIndex';
 
@@ -264,6 +265,23 @@ export function parseKiroErrorPayload(payload: unknown): KiroQuotaErrorPayload |
   }
   if (typeof payload === 'object') {
     return payload as KiroQuotaErrorPayload;
+  }
+  return null;
+}
+
+export function parseXaiBillingPayload(payload: unknown): XaiBillingPayload | null {
+  if (payload === undefined || payload === null) return null;
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim();
+    if (!trimmed) return null;
+    try {
+      return JSON.parse(trimmed) as XaiBillingPayload;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof payload === 'object') {
+    return payload as XaiBillingPayload;
   }
   return null;
 }
