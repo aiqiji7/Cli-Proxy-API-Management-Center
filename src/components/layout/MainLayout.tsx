@@ -444,16 +444,12 @@ export function MainLayout() {
               },
             ]
           : []),
-        ...(config?.loggingToFile
-          ? [
-              {
-                path: '/logs',
-                labelKey: 'nav.logs',
-                metaKey: 'nav_meta.logs',
-                icon: sidebarIcons.logs,
-              },
-            ]
-          : []),
+        {
+          path: '/logs',
+          labelKey: 'nav.logs',
+          metaKey: 'nav_meta.logs',
+          icon: sidebarIcons.logs,
+        },
       ],
     },
     {
