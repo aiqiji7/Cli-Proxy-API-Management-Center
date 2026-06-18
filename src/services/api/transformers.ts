@@ -1,4 +1,7 @@
 import type {
+  AmpcodeConfig,
+  AmpcodeModelMapping,
+  AmpcodeUpstreamApiKeyMapping,
   ApiKeyEntry,
   CloakConfig,
   GeminiKeyConfig,
@@ -255,6 +258,57 @@ const normalizeOpenAIProvider = (provider: unknown): OpenAIProviderConfig | null
   return result;
 };
 
+export const normalizeAmpcodeModelMappings = (input: unknown): AmpcodeModelMapping[] => {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((item) => {
+      if (!isRecord(item)) return null;
+      const from = String(item.from ?? '').trim();
+      const to = String(item.to ?? '').trim();
+      if (!from || !to) return null;
+      return { from, to } satisfies AmpcodeModelMapping;
+    })
+    .filter(Boolean) as AmpcodeModelMapping[];
+};
+
+export const normalizeAmpcodeUpstreamApiKeys = (input: unknown): AmpcodeUpstreamApiKeyMapping[] => {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((item) => {
+      if (!isRecord(item)) return null;
+      const upstreamApiKey = String(item['upstream-api-key'] ?? item.upstreamApiKey ?? '').trim();
+      const rawApiKeys = item['api-keys'] ?? item.apiKeys;
+      const apiKeys = Array.isArray(rawApiKeys)
+        ? rawApiKeys.map((key) => String(key ?? '').trim()).filter(Boolean)
+        : [];
+      if (!upstreamApiKey && apiKeys.length === 0) return null;
+      return { upstreamApiKey, apiKeys } satisfies AmpcodeUpstreamApiKeyMapping;
+    })
+    .filter(Boolean) as AmpcodeUpstreamApiKeyMapping[];
+};
+
+export const normalizeAmpcodeConfig = (input: unknown): AmpcodeConfig | null => {
+  if (!isRecord(input)) return null;
+  const config: AmpcodeConfig = {};
+  const upstreamUrl = input['upstream-url'] ?? input.upstreamUrl;
+  if (upstreamUrl !== undefined && upstreamUrl !== null) {
+    config.upstreamUrl = String(upstreamUrl);
+  }
+  const upstreamApiKey = input['upstream-api-key'] ?? input.upstreamApiKey;
+  if (upstreamApiKey !== undefined && upstreamApiKey !== null) {
+    config.upstreamApiKey = String(upstreamApiKey);
+  }
+  const upstreamApiKeys = normalizeAmpcodeUpstreamApiKeys(
+    input['upstream-api-keys'] ?? input.upstreamApiKeys
+  );
+  if (upstreamApiKeys.length) config.upstreamApiKeys = upstreamApiKeys;
+  const modelMappings = normalizeAmpcodeModelMappings(input['model-mappings'] ?? input.modelMappings);
+  if (modelMappings.length) config.modelMappings = modelMappings;
+  const forceModelMappings = normalizeBoolean(input['force-model-mappings'] ?? input.forceModelMappings);
+  if (forceModelMappings !== undefined) config.forceModelMappings = forceModelMappings;
+  return config;
+};
+
 const normalizeOauthExcluded = (payload: unknown): Record<string, string[]> | undefined => {
   if (!isRecord(payload)) return undefined;
   const source = payload['oauth-excluded-models'] ?? payload.items ?? payload;
@@ -364,6 +418,11 @@ export const normalizeConfigResponse = (raw: unknown): Config => {
     config.openaiCompatibility = openaiList
       .map((item) => normalizeOpenAIProvider(item))
       .filter(Boolean) as OpenAIProviderConfig[];
+  }
+
+  const ampcode = normalizeAmpcodeConfig(raw.ampcode);
+  if (ampcode) {
+    config.ampcode = ampcode;
   }
 
   const oauthExcluded = normalizeOauthExcluded(raw['oauth-excluded-models']);

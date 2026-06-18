@@ -18,6 +18,18 @@ import type {
 const countHeaders = (headers?: Record<string, string>): number =>
   headers ? Object.keys(headers).length : 0;
 
+const collectModelNames = (models?: Array<{ name?: string }>): string[] => {
+  const seen = new Set<string>();
+  (models ?? []).forEach((model) => {
+    const name = (model?.name ?? '').trim();
+    if (name) seen.add(name);
+  });
+  return Array.from(seen);
+};
+
+const normalizePriority = (priority?: number): number =>
+  typeof priority === 'number' && Number.isFinite(priority) ? priority : 0;
+
 const buildId = (brand: ProviderBrand, index: number, fragment: string) =>
   `${brand}:${index}:${fragment || 'item'}`;
 
@@ -64,6 +76,8 @@ function providerKeyToResource(
     proxyUrl: config.proxyUrl ?? null,
     prefix: config.prefix ?? null,
     modelCount: config.models?.length ?? 0,
+    models: collectModelNames(config.models),
+    priority: normalizePriority(config.priority),
     headerCount: countHeaders(config.headers),
     excludedModelCount: stripDisableAllModelsRule(config.excludedModels).length,
     apiKeyEntryCount: 0,
@@ -110,6 +124,8 @@ export function openaiToResource(
     proxyUrl: null,
     prefix: config.prefix ?? null,
     modelCount: config.models?.length ?? 0,
+    models: collectModelNames(config.models),
+    priority: normalizePriority(config.priority),
     headerCount: countHeaders(config.headers),
     excludedModelCount: 0,
     apiKeyEntryCount: config.apiKeyEntries?.length ?? 0,
@@ -139,6 +155,8 @@ export function ampcodeToResource(config?: AmpcodeConfig | null): ProviderResour
     proxyUrl: null,
     prefix: null,
     modelCount: safe.modelMappings?.length ?? 0,
+    models: (safe.modelMappings ?? []).map((mapping) => mapping.from).filter(Boolean),
+    priority: 0,
     headerCount: 0,
     excludedModelCount: 0,
     apiKeyEntryCount: upstreamKeyMappingsCount,
