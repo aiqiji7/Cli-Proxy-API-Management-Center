@@ -8,6 +8,7 @@ import {
   IconEyeOff,
   IconLoader2,
   IconPlus,
+  IconRefreshCw,
   IconX,
 } from '@/components/ui/icons';
 import { Collapsible } from '@/components/ui/Collapsible';
@@ -30,6 +31,7 @@ import {
 } from './useConnectivityTest';
 import { useModelDiscovery } from './useModelDiscovery';
 import { ModelDiscoveryPanel } from './ModelDiscoveryPanel';
+import { ModelSyncPanel } from './ModelSyncPanel';
 import styles from './sharedForm.module.scss';
 
 export interface BaseProviderFormHandle {
@@ -296,6 +298,7 @@ export function BaseProviderForm({
     authIndex: fallbackAuthIndex,
   });
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
 
   const existingModelNames = useMemo(() => {
     const set = new Set<string>();
@@ -342,6 +345,17 @@ export function BaseProviderForm({
     setDiscoveryOpen(false);
   };
 
+  const openSync = () => {
+    setSyncOpen(true);
+    if (!discovery.loading && !discovery.hasFetched) {
+      void discovery.fetch();
+    }
+  };
+
+  const closeSync = () => {
+    setSyncOpen(false);
+  };
+
   const applyDiscoveredModels = (incoming: ModelInfo[]) => {
     if (!incoming.length) return;
     setForm((prev) => {
@@ -373,6 +387,46 @@ export function BaseProviderForm({
       });
       return { ...prev, models: next };
     });
+  };
+
+  const syncModelsWithUpstream = (upstreamModels: ModelInfo[]) => {
+    const upstreamNames = new Set(
+      upstreamModels.map((m) => m.name.trim()).filter(Boolean)
+    );
+    setForm((prev) => {
+      const seen = new Set<string>();
+      const next: ModelEntryInput[] = [];
+
+      // Keep existing models that also exist upstream (preserving custom properties)
+      prev.models.forEach((entry) => {
+        const name = (entry.name ?? '').trim();
+        if (!name || seen.has(name)) return;
+        if (upstreamNames.has(name)) {
+          seen.add(name);
+          next.push(entry);
+        }
+        // If not in upstream, skip (remove)
+      });
+
+      // Add new models from upstream
+      upstreamModels.forEach((info) => {
+        const name = info.name.trim();
+        if (!name || seen.has(name)) return;
+        seen.add(name);
+        next.push({
+          name,
+          alias: (info.alias ?? '').trim(),
+        });
+      });
+
+      // Ensure at least one empty row if list is empty
+      if (next.length === 0) {
+        next.push(emptyModel());
+      }
+
+      return { ...prev, models: next };
+    });
+    setSyncOpen(false);
   };
 
   const updateField = <K extends keyof ProviderEntryFormInput>(
@@ -944,6 +998,17 @@ export function BaseProviderForm({
           <div className={styles.entriesList}>
             {discovery.available ? (
               <div className={styles.entriesToolbar}>
+                {mode === 'edit' ? (
+                  <button
+                    type="button"
+                    className={styles.connectivityBtn}
+                    onClick={openSync}
+                    disabled={mutating}
+                  >
+                    <IconRefreshCw size={14} />
+                    <span>{t('providersPage.sync.openButton')}</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={styles.connectivityBtn}
@@ -955,7 +1020,20 @@ export function BaseProviderForm({
                 </button>
               </div>
             ) : null}
-            {discovery.available && discoveryOpen ? (
+            {discovery.available && syncOpen ? (
+              <ModelSyncPanel
+                loading={discovery.loading}
+                error={discovery.error}
+                upstreamModels={discovery.models}
+                currentModelNames={existingModelNames}
+                hasFetched={discovery.hasFetched}
+                mutating={mutating}
+                onConfirm={syncModelsWithUpstream}
+                onCancel={closeSync}
+                onReload={() => void discovery.fetch()}
+              />
+            ) : null}
+            {discovery.available && discoveryOpen && !syncOpen ? (
               <ModelDiscoveryPanel
                 loading={discovery.loading}
                 error={discovery.error}

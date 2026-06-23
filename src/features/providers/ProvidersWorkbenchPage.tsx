@@ -363,6 +363,36 @@ export function ProvidersWorkbenchPage() {
     closeSheet();
   }, [closeSheet, showNotification, t]);
 
+  const handleSyncAllModels = useCallback(async () => {
+    try {
+      const result = await workbench.syncAllModels();
+      if (result.synced > 0 && result.failed === 0) {
+        showNotification(
+          t('providersPage.syncAll.success', { count: result.synced }),
+          'success'
+        );
+      } else if (result.synced > 0 && result.failed > 0) {
+        showNotification(
+          t('providersPage.syncAll.partial', {
+            synced: result.synced,
+            failed: result.failed,
+          }),
+          'warning'
+        );
+      } else if (result.failed > 0) {
+        showNotification(
+          t('providersPage.syncAll.failed', { count: result.failed }),
+          'error'
+        );
+      } else {
+        showNotification(t('providersPage.syncAll.noProviders'), 'info');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showNotification(`${t('providersPage.syncAll.failed', { count: 1 })}: ${msg}`, 'error');
+    }
+  }, [showNotification, t, workbench]);
+
   // 加载状态
   if (!workbench.snapshot && workbench.isPending) {
     return (
@@ -403,8 +433,11 @@ export function ProvidersWorkbenchPage() {
         isFetching={workbench.isFetching}
         isNewDisabled={disableMutations}
         newLabel={t('providersPage.actions.new')}
+        isSyncingAll={workbench.isSyncingAll}
+        isSyncAllDisabled={disableMutations}
         onRefresh={() => void handleRefresh()}
         onNew={openCreate}
+        onSyncAllModels={handleSyncAllModels}
       />
 
       <div className={styles.layout}>

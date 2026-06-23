@@ -14,8 +14,11 @@ interface ProviderHeaderCardProps {
   isFetching?: boolean;
   isNewDisabled?: boolean;
   newLabel?: string;
+  isSyncingAll?: boolean;
+  isSyncAllDisabled?: boolean;
   onRefresh: () => void;
   onNew: () => void;
+  onSyncAllModels?: () => void;
 }
 
 export function ProviderHeaderCard({
@@ -26,8 +29,11 @@ export function ProviderHeaderCard({
   isFetching = false,
   isNewDisabled = false,
   newLabel,
+  isSyncingAll = false,
+  isSyncAllDisabled = false,
   onRefresh,
   onNew,
+  onSyncAllModels,
 }: ProviderHeaderCardProps) {
   const { t } = useTranslation();
 
@@ -58,6 +64,24 @@ export function ProviderHeaderCard({
                 : t('providersPage.actions.refresh')}
             </span>
           </button>
+          {onSyncAllModels ? (
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.btnOutline}`}
+              onClick={onSyncAllModels}
+              disabled={isSyncingAll || isSyncAllDisabled}
+              aria-label={t('providersPage.syncAll.button')}
+            >
+              <span className={`${styles.btnIcon} ${isSyncingAll ? styles.spin : ''}`.trim()}>
+                {isSyncingAll ? <IconLoader2 size={16} /> : <IconRefreshCw size={16} />}
+              </span>
+              <span>
+                {isSyncingAll
+                  ? t('providersPage.syncAll.syncing')
+                  : t('providersPage.syncAll.button')}
+              </span>
+            </button>
+          ) : null}
           <button
             type="button"
             className={`${styles.btn} ${styles.btnPrimary}`}

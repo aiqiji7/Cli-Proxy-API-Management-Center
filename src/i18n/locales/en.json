@@ -1588,6 +1588,28 @@
       "close": "Close",
       "apply": "Apply ({{count}})"
     },
+    "sync": {
+      "openButton": "Sync models",
+      "loading": "Loading models from upstream…",
+      "noChanges": "Model list is already in sync with upstream",
+      "notLoaded": "Click Reload to fetch models from upstream",
+      "toAdd": "{{count}} to add",
+      "toRemove": "{{count}} to remove",
+      "unchanged": "{{count}} unchanged",
+      "willAdd": "Will be added",
+      "willRemove": "Will be removed",
+      "cancel": "Cancel",
+      "reload": "Reload",
+      "confirm": "Confirm sync"
+    },
+    "syncAll": {
+      "button": "Sync all models",
+      "syncing": "Syncing models…",
+      "success": "Successfully synced {{count}} provider(s)",
+      "partial": "Synced {{synced}} provider(s), {{failed}} failed",
+      "failed": "Failed to sync {{count}} provider(s)",
+      "noProviders": "No providers available to sync"
+    },
     "toolbar": {
       "sortBy": "Sort by",
       "sort": {

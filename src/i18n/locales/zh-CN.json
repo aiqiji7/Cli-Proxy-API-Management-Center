@@ -1588,6 +1588,28 @@
       "close": "关闭",
       "apply": "应用 ({{count}})"
     },
+    "sync": {
+      "openButton": "同步模型",
+      "loading": "正在从上游加载模型…",
+      "noChanges": "模型列表已与上游同步，无需更改",
+      "notLoaded": "点击重新加载以从上游获取模型",
+      "toAdd": "{{count}} 个待添加",
+      "toRemove": "{{count}} 个待移除",
+      "unchanged": "{{count}} 个不变",
+      "willAdd": "将被添加",
+      "willRemove": "将被移除",
+      "cancel": "取消",
+      "reload": "重新加载",
+      "confirm": "确认同步"
+    },
+    "syncAll": {
+      "button": "同步所有模型",
+      "syncing": "正在同步模型…",
+      "success": "成功同步 {{count}} 个渠道",
+      "partial": "已同步 {{synced}} 个渠道，{{failed}} 个失败",
+      "failed": "{{count}} 个渠道同步失败",
+      "noProviders": "没有可同步的渠道"
+    },
     "toolbar": {
       "sortBy": "排序",
       "sort": {

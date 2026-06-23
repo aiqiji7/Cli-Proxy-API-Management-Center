@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ampcodeApi, providersApi } from '@/services/api';
+import { ampcodeApi, modelsApi, providersApi } from '@/services/api';
 import { useAuthStore, useConfigStore } from '@/stores';
 import {
   withDisableAllModelsRule,
   withoutDisableAllModelsRule,
 } from '@/components/providers/utils';
+import { buildHeaderObject } from '@/utils/headers';
 import type {
   AmpcodeConfig,
   GeminiKeyConfig,
+  ModelAlias,
   OpenAIProviderConfig,
   ProviderKeyConfig,
 } from '@/types';
+import type { ModelInfo } from '@/utils/models';
 import {
   ampcodeToResource,
   claudeToResource,
@@ -34,6 +37,13 @@ const getErrorMessage = (err: unknown): string => {
   return '';
 };
 
+export interface SyncAllModelsResult {
+  synced: number;
+  failed: number;
+  skipped: number;
+  errors: string[];
+}
+
 export interface UseProviderWorkbenchResult {
   connected: boolean;
   isPending: boolean;
@@ -50,6 +60,8 @@ export interface UseProviderWorkbenchResult {
   saveAmpcode: (config: AmpcodeConfig) => Promise<void>;
   mutating: boolean;
   refreshSnapshot: () => void;
+  syncAllModels: () => Promise<SyncAllModelsResult>;
+  isSyncingAll: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -171,6 +183,82 @@ const buildOpenAIConfig = (
 };
 
 /* -------------------------------------------------------------------------- */
+/* model sync helpers                                                          */
+/* -------------------------------------------------------------------------- */
+
+/** Compute synced model list: keep existing that exist upstream, add new from upstream */
+const computeSyncedModels = (
+  currentModels: ModelAlias[] | undefined,
+  upstreamModels: ModelInfo[]
+): ModelAlias[] => {
+  const upstreamNames = new Set(
+    upstreamModels.map((m) => m.name.trim()).filter(Boolean)
+  );
+  const seen = new Set<string>();
+  const result: ModelAlias[] = [];
+
+  // Keep existing models that also exist upstream (preserving custom properties)
+  (currentModels ?? []).forEach((entry) => {
+    const name = (entry.name ?? '').trim();
+    if (!name || seen.has(name)) return;
+    if (upstreamNames.has(name)) {
+      seen.add(name);
+      result.push(entry);
+    }
+  });
+
+  // Add new models from upstream
+  upstreamModels.forEach((info) => {
+    const name = info.name.trim();
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    result.push({
+      name,
+      alias: (info.alias ?? '').trim() || undefined,
+    });
+  });
+
+  return result;
+};
+
+/** Fetch upstream models for a single provider entry */
+const fetchUpstreamModels = async (
+  brand: 'gemini' | 'codex' | 'claude' | 'openaiCompatibility',
+  cfg: { baseUrl?: string; apiKey?: string; headers?: Record<string, string>; authIndex?: string; apiKeyEntries?: Array<{ apiKey?: string; authIndex?: string }> }
+): Promise<ModelInfo[]> => {
+  const baseUrl = (cfg.baseUrl ?? '').trim();
+  if (!baseUrl) throw new Error('No base URL configured');
+
+  const baseHeaders = buildHeaderObject(cfg.headers);
+  const authIndex = (cfg.authIndex ?? '').trim() || undefined;
+
+  if (brand === 'gemini') {
+    return modelsApi.fetchGeminiModelsViaApiCall(baseUrl, cfg.apiKey, baseHeaders, authIndex);
+  }
+  if (brand === 'codex') {
+    return modelsApi.fetchV1ModelsViaApiCall(baseUrl, cfg.apiKey, baseHeaders, authIndex);
+  }
+  if (brand === 'claude') {
+    return modelsApi.fetchClaudeModelsViaApiCall(baseUrl, cfg.apiKey, baseHeaders, authIndex);
+  }
+  // openaiCompatibility
+  const firstEntry = (cfg.apiKeyEntries ?? []).find(
+    (e) => (e.apiKey ?? '').trim() || (e.authIndex ?? '').trim()
+  );
+  const entryKey = (firstEntry?.apiKey ?? '').trim();
+  const entryAuthIndex = (firstEntry?.authIndex ?? '').trim() || authIndex;
+  try {
+    return modelsApi.fetchModelsViaApiCall(baseUrl, entryKey, baseHeaders, entryAuthIndex);
+  } catch (firstErr) {
+    try {
+      return modelsApi.fetchModelsViaApiCall(baseUrl);
+    } catch {
+      throw firstErr;
+    }
+  }
+};
+
+/* -------------------------------------------------------------------------- */
 /* hook                                                                       */
 /* -------------------------------------------------------------------------- */
 
@@ -186,6 +274,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
   const [isFetching, setIsFetching] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mutating, setMutating] = useState<boolean>(false);
+  const [isSyncingAll, setIsSyncingAll] = useState<boolean>(false);
   const [fetchedAt, setFetchedAt] = useState<string>(() => new Date().toISOString());
 
   const hasFetchedRef = useRef(false);
@@ -568,6 +657,133 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
     [clearCache, refreshSnapshot, updateConfigValue]
   );
 
+  const syncAllModels = useCallback(async (): Promise<SyncAllModelsResult> => {
+    if (!config) return { synced: 0, failed: 0, skipped: 0, errors: [] };
+    setIsSyncingAll(true);
+    setMutating(true);
+
+    let synced = 0;
+    let failed = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    try {
+      // --- Gemini ---
+      const geminiKeys = config.geminiApiKeys ?? [];
+      if (geminiKeys.length > 0) {
+        const nextGemini = [...geminiKeys];
+        let geminiChanged = false;
+        for (let i = 0; i < geminiKeys.length; i++) {
+          const entry = geminiKeys[i];
+          if (!entry.baseUrl && !entry.apiKey) { skipped++; continue; }
+          try {
+            const upstream = await fetchUpstreamModels('gemini', entry);
+            const syncedModels = computeSyncedModels(entry.models, upstream);
+            nextGemini[i] = { ...entry, models: syncedModels.length ? syncedModels : undefined };
+            synced++;
+            geminiChanged = true;
+          } catch (err) {
+            failed++;
+            errors.push(`Gemini[${i}]: ${getErrorMessage(err) || 'Failed'}`);
+          }
+        }
+        if (geminiChanged) {
+          await persistGeminiKeys(nextGemini);
+        }
+      }
+
+      // --- Codex ---
+      const codexKeys = config.codexApiKeys ?? [];
+      if (codexKeys.length > 0) {
+        const nextCodex = [...codexKeys];
+        let codexChanged = false;
+        for (let i = 0; i < codexKeys.length; i++) {
+          const entry = codexKeys[i];
+          if (!entry.baseUrl && !entry.apiKey) { skipped++; continue; }
+          try {
+            const upstream = await fetchUpstreamModels('codex', entry);
+            const syncedModels = computeSyncedModels(entry.models, upstream);
+            nextCodex[i] = { ...entry, models: syncedModels.length ? syncedModels : undefined };
+            synced++;
+            codexChanged = true;
+          } catch (err) {
+            failed++;
+            errors.push(`Codex[${i}]: ${getErrorMessage(err) || 'Failed'}`);
+          }
+        }
+        if (codexChanged) {
+          await persistCodexConfigs(nextCodex);
+        }
+      }
+
+      // --- Claude ---
+      const claudeKeys = config.claudeApiKeys ?? [];
+      if (claudeKeys.length > 0) {
+        const nextClaude = [...claudeKeys];
+        let claudeChanged = false;
+        for (let i = 0; i < claudeKeys.length; i++) {
+          const entry = claudeKeys[i];
+          if (!entry.baseUrl && !entry.apiKey) { skipped++; continue; }
+          try {
+            const upstream = await fetchUpstreamModels('claude', entry);
+            const syncedModels = computeSyncedModels(entry.models, upstream);
+            nextClaude[i] = { ...entry, models: syncedModels.length ? syncedModels : undefined };
+            synced++;
+            claudeChanged = true;
+          } catch (err) {
+            failed++;
+            errors.push(`Claude[${i}]: ${getErrorMessage(err) || 'Failed'}`);
+          }
+        }
+        if (claudeChanged) {
+          await persistClaudeConfigs(nextClaude);
+        }
+      }
+
+      // --- OpenAI Compatibility ---
+      const openaiProviders = config.openaiCompatibility ?? [];
+      if (openaiProviders.length > 0) {
+        const nextOpenAI = [...openaiProviders];
+        let openaiChanged = false;
+        for (let i = 0; i < openaiProviders.length; i++) {
+          const entry = openaiProviders[i];
+          if (!entry.baseUrl) { skipped++; continue; }
+          try {
+            const upstream = await fetchUpstreamModels('openaiCompatibility', {
+              baseUrl: entry.baseUrl,
+              headers: entry.headers,
+              apiKeyEntries: entry.apiKeyEntries,
+            });
+            const syncedModels = computeSyncedModels(entry.models, upstream);
+            nextOpenAI[i] = { ...entry, models: syncedModels.length ? syncedModels : undefined };
+            synced++;
+            openaiChanged = true;
+          } catch (err) {
+            failed++;
+            errors.push(`OpenAI[${i}] "${entry.name}": ${getErrorMessage(err) || 'Failed'}`);
+          }
+        }
+        if (openaiChanged) {
+          await persistOpenAIConfigs(nextOpenAI);
+        }
+      }
+
+      refreshSnapshot();
+    } finally {
+      setIsSyncingAll(false);
+      setMutating(false);
+    }
+
+    return { synced, failed, skipped, errors };
+  }, [
+    config,
+    persistClaudeConfigs,
+    persistCodexConfigs,
+    persistGeminiKeys,
+    persistOpenAIConfigs,
+    refreshSnapshot,
+  ]);
+
   return {
     connected,
     isPending,
@@ -583,5 +799,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
     saveAmpcode,
     mutating,
     refreshSnapshot,
+    syncAllModels,
+    isSyncingAll,
   };
 }
