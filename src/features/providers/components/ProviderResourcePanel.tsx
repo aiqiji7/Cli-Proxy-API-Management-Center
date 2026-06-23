@@ -27,10 +27,12 @@ interface ProviderResourcePanelProps {
   disableMutations?: boolean;
   usageByProvider?: ProviderRecentUsageMap;
   toolbarControls?: ProviderPanelControls;
+  syncingProviderId?: string | null;
   onView: (resource: ProviderResource) => void;
   onEdit: (resource: ProviderResource) => void;
   onDelete: (resource: ProviderResource) => void;
   onToggleDisabled?: (resource: ProviderResource, disabled: boolean) => void;
+  onSyncModels?: (resource: ProviderResource) => void;
   onCreate: () => void;
 }
 
@@ -43,10 +45,12 @@ export function ProviderResourcePanel({
   disableMutations,
   usageByProvider,
   toolbarControls,
+  syncingProviderId,
   onView,
   onEdit,
   onDelete,
   onToggleDisabled,
+  onSyncModels,
   onCreate,
 }: ProviderResourcePanelProps) {
   const { t } = useTranslation();
@@ -132,10 +136,12 @@ export function ProviderResourcePanel({
           selectedId={selectedId}
           disableMutations={disableMutations}
           usageByProvider={usageByProvider}
+          syncingProviderId={syncingProviderId}
           onView={onView}
           onEdit={onEdit}
           onDelete={onDelete}
           onToggleDisabled={onToggleDisabled}
+          onSyncModels={onSyncModels}
         />
       )}
     </section>

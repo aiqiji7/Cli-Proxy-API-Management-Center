@@ -4,7 +4,9 @@ import {
   IconAlertTriangle,
   IconCheckCircle2,
   IconEye,
+  IconLoader2,
   IconPencil,
+  IconRefreshCw,
   IconTrash2,
 } from '@/components/ui/icons';
 import {
@@ -26,6 +28,7 @@ import {
 } from '@/components/providers/utils';
 import type { OpenAIProviderConfig } from '@/types';
 import type { StatusBarData } from '@/utils/recentRequests';
+import { isModelDiscoveryBrand } from '../sheets/forms/useModelDiscovery';
 import type { ProviderResource } from '../types';
 import styles from './ProviderResourceTable.module.scss';
 import statusBarStyles from './providerStatusBar.module.scss';
@@ -35,10 +38,12 @@ interface ProviderResourceTableProps {
   selectedId?: string | null;
   disableMutations?: boolean;
   usageByProvider?: ProviderRecentUsageMap;
+  syncingProviderId?: string | null;
   onView: (resource: ProviderResource) => void;
   onEdit: (resource: ProviderResource) => void;
   onDelete: (resource: ProviderResource) => void;
   onToggleDisabled?: (resource: ProviderResource, disabled: boolean) => void;
+  onSyncModels?: (resource: ProviderResource) => void;
 }
 
 const columnWidths = ['18%', '18%', '6%', '14%', '24%', '20%'];
@@ -84,10 +89,12 @@ export function ProviderResourceTable({
   selectedId,
   disableMutations,
   usageByProvider,
+  syncingProviderId,
   onView,
   onEdit,
   onDelete,
   onToggleDisabled,
+  onSyncModels,
 }: ProviderResourceTableProps) {
   const { t } = useTranslation();
 
@@ -283,6 +290,27 @@ export function ProviderResourceTable({
                   >
                     <IconPencil size={16} />
                   </button>
+                  {onSyncModels && isModelDiscoveryBrand(resource.brand) ? (
+                    <button
+                      type="button"
+                      className={`${styles.iconBtn} ${styles.iconBtnSync}`}
+                      aria-label={t('providersPage.syncRow.button')}
+                      title={t('providersPage.syncRow.button')}
+                      disabled={disableMutations || syncingProviderId !== null}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSyncModels(resource);
+                      }}
+                    >
+                      {syncingProviderId === resource.id ? (
+                        <span className={styles.iconSpin}>
+                          <IconLoader2 size={16} />
+                        </span>
+                      ) : (
+                        <IconRefreshCw size={16} />
+                      )}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className={`${styles.iconBtn} ${styles.iconBtnDanger}`}

@@ -1610,6 +1610,12 @@
       "failed": "Failed to sync {{count}} provider(s)",
       "noProviders": "No providers available to sync"
     },
+    "syncRow": {
+      "button": "Sync models",
+      "success": "Synced: +{{added}} added, -{{removed}} removed",
+      "noChanges": "Model list is already in sync",
+      "failed": "Sync failed"
+    },
     "toolbar": {
       "sortBy": "Sort by",
       "sort": {

@@ -14,6 +14,7 @@ import type {
   ProviderKeyConfig,
 } from '@/types';
 import type { ModelInfo } from '@/utils/models';
+import { isModelDiscoveryBrand } from './sheets/forms/useModelDiscovery';
 import {
   ampcodeToResource,
   claudeToResource,
@@ -44,6 +45,12 @@ export interface SyncAllModelsResult {
   errors: string[];
 }
 
+export interface SyncProviderModelsResult {
+  added: number;
+  removed: number;
+  unchanged: number;
+}
+
 export interface UseProviderWorkbenchResult {
   connected: boolean;
   isPending: boolean;
@@ -62,6 +69,8 @@ export interface UseProviderWorkbenchResult {
   refreshSnapshot: () => void;
   syncAllModels: () => Promise<SyncAllModelsResult>;
   isSyncingAll: boolean;
+  syncProviderModels: (resource: ProviderResource) => Promise<SyncProviderModelsResult>;
+  syncingProviderId: string | null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -275,6 +284,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [mutating, setMutating] = useState<boolean>(false);
   const [isSyncingAll, setIsSyncingAll] = useState<boolean>(false);
+  const [syncingProviderId, setSyncingProviderId] = useState<string | null>(null);
   const [fetchedAt, setFetchedAt] = useState<string>(() => new Date().toISOString());
 
   const hasFetchedRef = useRef(false);
@@ -657,6 +667,92 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
     [clearCache, refreshSnapshot, updateConfigValue]
   );
 
+  const syncProviderModels = useCallback(
+    async (resource: ProviderResource): Promise<SyncProviderModelsResult> => {
+      if (!config) throw new Error('Config not loaded');
+      if (!isModelDiscoveryBrand(resource.brand)) {
+        throw new Error('This provider does not support model sync');
+      }
+
+      setSyncingProviderId(resource.id);
+      setMutating(true);
+
+      try {
+        const brand = resource.brand;
+        const idx = resource.originalIndex;
+        const raw = resource.raw;
+
+        // Fetch upstream models
+        let upstream: ModelInfo[];
+        if (brand === 'gemini') {
+          const cfg = raw as GeminiKeyConfig;
+          upstream = await fetchUpstreamModels('gemini', cfg);
+        } else if (brand === 'codex') {
+          const cfg = raw as ProviderKeyConfig;
+          upstream = await fetchUpstreamModels('codex', cfg);
+        } else if (brand === 'claude') {
+          const cfg = raw as ProviderKeyConfig;
+          upstream = await fetchUpstreamModels('claude', cfg);
+        } else {
+          const cfg = raw as OpenAIProviderConfig;
+          upstream = await fetchUpstreamModels('openaiCompatibility', {
+            baseUrl: cfg.baseUrl,
+            headers: cfg.headers,
+            apiKeyEntries: cfg.apiKeyEntries,
+          });
+        }
+
+        // Compute diff stats
+        const currentModels = ((raw as { models?: ModelAlias[] }).models ?? []);
+        const currentNames = new Set(
+          currentModels.map((m) => (m.name ?? '').trim()).filter(Boolean)
+        );
+        const upstreamNames = new Set(
+          upstream.map((m) => m.name.trim()).filter(Boolean)
+        );
+        const added = upstream.filter((m) => m.name.trim() && !currentNames.has(m.name.trim())).length;
+        const removed = [...currentNames].filter((n) => !upstreamNames.has(n)).length;
+        const unchanged = currentNames.size - removed;
+
+        // Compute synced models
+        const syncedModels = computeSyncedModels(currentModels, upstream);
+
+        // Persist
+        if (brand === 'gemini') {
+          const list = [...(config.geminiApiKeys ?? [])];
+          list[idx] = { ...list[idx], models: syncedModels.length ? syncedModels : undefined };
+          await persistGeminiKeys(list);
+        } else if (brand === 'codex') {
+          const list = [...(config.codexApiKeys ?? [])];
+          list[idx] = { ...list[idx], models: syncedModels.length ? syncedModels : undefined };
+          await persistCodexConfigs(list);
+        } else if (brand === 'claude') {
+          const list = [...(config.claudeApiKeys ?? [])];
+          list[idx] = { ...list[idx], models: syncedModels.length ? syncedModels : undefined };
+          await persistClaudeConfigs(list);
+        } else {
+          const list = [...(config.openaiCompatibility ?? [])];
+          list[idx] = { ...list[idx], models: syncedModels.length ? syncedModels : undefined };
+          await persistOpenAIConfigs(list);
+        }
+
+        refreshSnapshot();
+        return { added, removed, unchanged };
+      } finally {
+        setSyncingProviderId(null);
+        setMutating(false);
+      }
+    },
+    [
+      config,
+      persistClaudeConfigs,
+      persistCodexConfigs,
+      persistGeminiKeys,
+      persistOpenAIConfigs,
+      refreshSnapshot,
+    ]
+  );
+
   const syncAllModels = useCallback(async (): Promise<SyncAllModelsResult> => {
     if (!config) return { synced: 0, failed: 0, skipped: 0, errors: [] };
     setIsSyncingAll(true);
@@ -801,5 +897,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
     refreshSnapshot,
     syncAllModels,
     isSyncingAll,
+    syncProviderModels,
+    syncingProviderId,
   };
 }

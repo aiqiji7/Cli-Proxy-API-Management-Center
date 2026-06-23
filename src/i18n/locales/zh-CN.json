@@ -1610,6 +1610,12 @@
       "failed": "{{count}} 个渠道同步失败",
       "noProviders": "没有可同步的渠道"
     },
+    "syncRow": {
+      "button": "同步模型",
+      "success": "同步完成：+{{added}} 个添加，-{{removed}} 个移除",
+      "noChanges": "模型列表已与上游同步",
+      "failed": "同步失败"
+    },
     "toolbar": {
       "sortBy": "排序",
       "sort": {

@@ -393,6 +393,29 @@ export function ProvidersWorkbenchPage() {
     }
   }, [showNotification, t, workbench]);
 
+  const handleSyncProviderModels = useCallback(
+    async (resource: ProviderResource) => {
+      try {
+        const result = await workbench.syncProviderModels(resource);
+        if (result.added > 0 || result.removed > 0) {
+          showNotification(
+            t('providersPage.syncRow.success', {
+              added: result.added,
+              removed: result.removed,
+            }),
+            'success'
+          );
+        } else {
+          showNotification(t('providersPage.syncRow.noChanges'), 'info');
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        showNotification(`${t('providersPage.syncRow.failed')}: ${msg}`, 'error');
+      }
+    },
+    [showNotification, t, workbench]
+  );
+
   // 加载状态
   if (!workbench.snapshot && workbench.isPending) {
     return (
@@ -467,10 +490,12 @@ export function ProvidersWorkbenchPage() {
           disableMutations={disableMutations}
           usageByProvider={usageByProvider}
           toolbarControls={toolbarControls}
+          syncingProviderId={workbench.syncingProviderId}
           onView={openView}
           onEdit={openEdit}
           onDelete={handleDelete}
           onToggleDisabled={handleToggleDisabled}
+          onSyncModels={handleSyncProviderModels}
           onCreate={openCreate}
         />
       </div>
