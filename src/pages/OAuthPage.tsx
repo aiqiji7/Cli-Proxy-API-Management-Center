@@ -4,9 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { useNotificationStore, useThemeStore } from '@/stores';
+import { useAuthStore, useNotificationStore, useThemeStore } from '@/stores';
 import { oauthApi, type OAuthProvider } from '@/services/api/oauth';
+import { pluginsApi } from '@/services/api/plugins';
 import { vertexApi, type VertexImportResponse } from '@/services/api/vertex';
+import { PLUGIN_RESOURCES_REFRESH_EVENT } from '@/features/plugins/pluginResources';
 import { copyToClipboard } from '@/utils/clipboard';
 import { getErrorMessage, isRecord } from '@/utils/helpers';
 import styles from './OAuthPage.module.scss';
@@ -33,6 +35,30 @@ interface ProviderState {
   callbackStatus?: 'success' | 'error';
   callbackError?: string;
 }
+
+type OAuthConnection = Pick<
+  ReturnType<typeof useAuthStore.getState>,
+  'apiBase' | 'managementKey' | 'connectionStatus' | 'supportsPlugin'
+>;
+
+interface GeminiPluginState {
+  apiBase: string;
+  managementKey: string;
+  status: 'idle' | 'loading' | 'ready' | 'unavailable' | 'error';
+}
+
+const matchesPluginConnection = (
+  plugin: GeminiPluginState | null,
+  connection: OAuthConnection
+) =>
+  plugin !== null &&
+  connection.connectionStatus === 'connected' &&
+  connection.supportsPlugin &&
+  plugin.apiBase === connection.apiBase &&
+  plugin.managementKey === connection.managementKey;
+
+const canUseGeminiOAuth = (plugin: GeminiPluginState | null, connection: OAuthConnection) =>
+  plugin?.status === 'ready' && matchesPluginConnection(plugin, connection);
 
 interface VertexImportResult {
   projectId?: string;
@@ -157,6 +183,12 @@ export function OAuthPage() {
   const navigate = useNavigate();
   const { showNotification } = useNotificationStore();
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
+  const apiBase = useAuthStore((state) => state.apiBase);
+  const managementKey = useAuthStore((state) => state.managementKey);
+  const connectionStatus = useAuthStore((state) => state.connectionStatus);
+  const supportsPlugin = useAuthStore((state) => state.supportsPlugin);
+  const [geminiPlugin, setGeminiPlugin] = useState<GeminiPluginState | null>(null);
+  const geminiPluginRef = useRef<GeminiPluginState | null>(null);
   const [states, setStates] = useState<Record<OAuthProvider, ProviderState>>({} as Record<OAuthProvider, ProviderState>);
   const [vertexState, setVertexState] = useState<VertexImportState>({
     fileName: '',
@@ -166,6 +198,87 @@ export function OAuthPage() {
   const pollingTimers = useRef<Partial<Record<OAuthProvider, number>>>({});
   const successResetTimers = useRef<Partial<Record<OAuthProvider, number>>>({});
   const vertexFileInputRef = useRef<HTMLInputElement | null>(null);
+  const connection = { apiBase, managementKey, connectionStatus, supportsPlugin };
+  const geminiOAuthAvailable = canUseGeminiOAuth(geminiPlugin, connection);
+  const geminiPluginStatus = matchesPluginConnection(geminiPlugin, connection)
+    ? geminiPlugin?.status
+    : 'idle';
+
+  const clearGeminiAuth = useCallback(() => {
+    const pollingTimer = pollingTimers.current['gemini-cli'];
+    const resetTimer = successResetTimers.current['gemini-cli'];
+    if (pollingTimer !== undefined) window.clearInterval(pollingTimer);
+    if (resetTimer !== undefined) window.clearTimeout(resetTimer);
+    delete pollingTimers.current['gemini-cli'];
+    delete successResetTimers.current['gemini-cli'];
+    setStates((prev) => (prev['gemini-cli'] ? { ...prev, 'gemini-cli': {} } : prev));
+  }, []);
+
+  const loadGeminiPlugin = useCallback(async () => {
+    const current = useAuthStore.getState();
+    const canLoad = current.connectionStatus === 'connected' && current.supportsPlugin;
+    // Each refresh owns a new snapshot, so even a switch away and back invalidates old results.
+    const pending: GeminiPluginState = {
+      apiBase: current.apiBase,
+      managementKey: current.managementKey,
+      status: canLoad ? 'loading' : 'idle'
+    };
+    geminiPluginRef.current = pending;
+    setGeminiPlugin(pending);
+    clearGeminiAuth();
+    if (!canLoad) return;
+
+    const isCurrent = () =>
+      geminiPluginRef.current === pending &&
+      matchesPluginConnection(pending, useAuthStore.getState());
+    try {
+      const result = await pluginsApi.list();
+      if (!isCurrent()) return;
+      const available = result.pluginsEnabled && result.plugins.some(
+        (plugin) => plugin.effectiveEnabled && plugin.supportsOAuth && plugin.oauthProvider === 'gemini-cli'
+      );
+      const next: GeminiPluginState = { ...pending, status: available ? 'ready' : 'unavailable' };
+      geminiPluginRef.current = next;
+      setGeminiPlugin(next);
+    } catch {
+      if (!isCurrent()) return;
+      const next: GeminiPluginState = { ...pending, status: 'error' };
+      geminiPluginRef.current = next;
+      setGeminiPlugin(next);
+    }
+  }, [clearGeminiAuth]);
+
+  useEffect(() => {
+    let disposed = false;
+    // Subscribe directly to invalidate requests before React processes a connection change.
+    const unsubscribe = useAuthStore.subscribe((next, previous) => {
+      if (
+        next.apiBase !== previous.apiBase ||
+        next.managementKey !== previous.managementKey ||
+        next.connectionStatus !== previous.connectionStatus ||
+        next.supportsPlugin !== previous.supportsPlugin
+      ) {
+        void loadGeminiPlugin();
+      }
+    });
+    const refresh = () => {
+      void loadGeminiPlugin();
+    };
+    window.addEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, refresh);
+    // Skip obsolete mounts and let a connection event supply the initial snapshot if it arrives first.
+    queueMicrotask(() => {
+      if (!disposed && !geminiPluginRef.current) refresh();
+    });
+    return () => {
+      disposed = true;
+      unsubscribe();
+      window.removeEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, refresh);
+      geminiPluginRef.current = null;
+    };
+  }, [loadGeminiPlugin]);
+
+  const isCurrentGeminiAttempt = (snapshot: GeminiPluginState | null) =>
+    geminiPluginRef.current === snapshot && canUseGeminiOAuth(snapshot, useAuthStore.getState());
 
   const clearTimers = useCallback(() => {
     Object.values(pollingTimers.current).forEach((timer) => {
@@ -246,11 +359,18 @@ export function OAuthPage() {
     }, SUCCESS_RESET_DELAY_MS);
   };
 
-  const startPolling = (provider: OAuthProvider, state: string) => {
+  const startPolling = (
+    provider: OAuthProvider,
+    state: string,
+    geminiSnapshot: GeminiPluginState | null
+  ) => {
     clearPollingTimer(provider);
+    const isCurrent = () => provider !== 'gemini-cli' || isCurrentGeminiAttempt(geminiSnapshot);
     const timer = window.setInterval(async () => {
+      if (!isCurrent()) return;
       try {
         const res = await oauthApi.getAuthStatus(state);
+        if (!isCurrent()) return;
         if (res.status === 'ok') {
           completeProviderAuth(provider);
           showNotification(t(getAuthKey(provider, 'oauth_status_success')), 'success');
@@ -264,6 +384,7 @@ export function OAuthPage() {
           delete pollingTimers.current[provider];
         }
       } catch (err: unknown) {
+        if (!isCurrent()) return;
         updateProviderState(provider, { status: 'error', error: getErrorMessage(err), polling: false });
         window.clearInterval(timer);
         delete pollingTimers.current[provider];
@@ -273,6 +394,12 @@ export function OAuthPage() {
   };
 
   const startAuth = async (provider: OAuthProvider) => {
+    const geminiSnapshot = geminiPlugin;
+    const isCurrent = () => provider !== 'gemini-cli' || isCurrentGeminiAttempt(geminiSnapshot);
+    if (!isCurrent()) {
+      showNotification(t('auth_login.gemini_cli_plugin_required'), 'warning');
+      return;
+    }
     clearProviderTimers(provider);
     const geminiState = provider === 'gemini-cli' ? states[provider] : undefined;
     const rawProjectId = provider === 'gemini-cli' ? (geminiState?.projectId || '').trim() : '';
@@ -300,6 +427,7 @@ export function OAuthPage() {
         provider,
         provider === 'gemini-cli' ? { projectId: projectId || undefined } : undefined
       );
+      if (!isCurrent()) return;
       if (!res.state) {
         const message = t('auth_login.missing_state');
         updateProviderState(provider, {
@@ -313,8 +441,9 @@ export function OAuthPage() {
         return;
       }
       updateProviderState(provider, { url: res.url, state: res.state, status: 'waiting', polling: true });
-      startPolling(provider, res.state);
+      startPolling(provider, res.state, geminiSnapshot);
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       const message = getErrorMessage(err);
       updateProviderState(provider, { status: 'error', error: message, polling: false });
       showNotification(
@@ -334,6 +463,13 @@ export function OAuthPage() {
   };
 
   const submitCallback = async (provider: OAuthProvider) => {
+    const geminiSnapshot = geminiPlugin;
+    const isCurrent = () => provider !== 'gemini-cli' || isCurrentGeminiAttempt(geminiSnapshot);
+    if (!isCurrent()) {
+      showNotification(t('auth_login.gemini_cli_plugin_required'), 'warning');
+      return;
+    }
+    if (provider === 'gemini-cli' && (!states[provider]?.url || !states[provider]?.state)) return;
     const callbackInput = (states[provider]?.callbackUrl || '').trim();
     if (!callbackInput) {
       showNotification(
@@ -354,9 +490,11 @@ export function OAuthPage() {
     });
     try {
       await oauthApi.submitCallback(provider, redirectUrl);
+      if (!isCurrent()) return;
       updateProviderState(provider, { callbackSubmitting: false, callbackStatus: 'success' });
       showNotification(t('auth_login.oauth_callback_success'), 'success');
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       const status = getErrorStatus(err);
       const message = getErrorMessage(err);
       const errorMessage =
@@ -435,14 +573,60 @@ export function OAuthPage() {
     }
   };
 
+  const geminiPluginNotice = (
+    <Card
+      title={
+        <span className={styles.cardTitle}>
+          <img src={iconGemini} alt="" className={styles.cardTitleIcon} />
+          {t('auth_login.gemini_cli_plugin_title')}
+        </span>
+      }
+    >
+      <div className={styles.cardContent}>
+        <p className={styles.cardHint}>{t('auth_login.gemini_cli_plugin_required')}</p>
+        {geminiPluginStatus === 'loading' && (
+          <div className={styles.cardHint} role="status">
+            {t('auth_login.gemini_cli_plugin_loading')}
+          </div>
+        )}
+        {geminiPluginStatus === 'error' && (
+          <div className="status-badge error" role="alert">
+            {t('auth_login.gemini_cli_plugin_load_error')}
+          </div>
+        )}
+        {supportsPlugin && (
+          <div className={styles.authUrlActions}>
+            <Button variant="secondary" size="sm" onClick={() => navigate('/plugins')}>
+              {t('nav.plugins')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadGeminiPlugin()}
+              loading={geminiPluginStatus === 'loading'}
+              disabled={connectionStatus !== 'connected'}
+            >
+              {t('auth_login.gemini_cli_plugin_retry')}
+            </Button>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+
   return (
     <div className={styles.container}>
       <h1 className={styles.pageTitle}>{t('nav.oauth', { defaultValue: 'OAuth' })}</h1>
 
       <div className={styles.content}>
         {PROVIDERS.map((provider) => {
+          if (provider.id === 'gemini-cli' && !geminiOAuthAvailable) {
+            return <div key={provider.id}>{geminiPluginNotice}</div>;
+          }
           const state = states[provider.id] || {};
-          const canSubmitCallback = CALLBACK_SUPPORTED.includes(provider.id) && Boolean(state.url);
+          const canSubmitCallback =
+            CALLBACK_SUPPORTED.includes(provider.id) && Boolean(state.url) &&
+            (provider.id !== 'gemini-cli' || Boolean(state.state));
           const loginButtonLabel =
             state.status === 'success'
               ? t('auth_login.login_another_account')

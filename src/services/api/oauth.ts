@@ -28,9 +28,6 @@ const WEBUI_SUPPORTED: OAuthProvider[] = [
   'gemini-cli',
   'xai'
 ];
-const CALLBACK_PROVIDER_MAP: Partial<Record<OAuthProvider, string>> = {
-  'gemini-cli': 'gemini'
-};
 
 export const oauthApi = {
   startAuth: (provider: OAuthProvider, options?: { projectId?: string }) => {
@@ -52,9 +49,8 @@ export const oauthApi = {
     }),
 
   submitCallback: (provider: OAuthProvider, redirectUrl: string) => {
-    const callbackProvider = CALLBACK_PROVIDER_MAP[provider] ?? provider;
     return apiClient.post<OAuthCallbackResponse>('/oauth-callback', {
-      provider: callbackProvider,
+      provider,
       redirect_url: redirectUrl
     });
   }

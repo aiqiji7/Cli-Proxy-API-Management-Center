@@ -37,10 +37,7 @@ export const QUOTA_PROVIDER_TYPES = new Set<QuotaProviderType>([
   'antigravity',
   'claude',
   'codex',
-  'gemini-cli',
   'kimi',
-  'kiro',
-  'github-copilot',
   'xai'
 ]);
 

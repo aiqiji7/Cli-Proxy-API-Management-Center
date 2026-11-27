@@ -16,6 +16,7 @@ import type { AuthFileItem } from '@/types';
 import { getStatusFromError } from '@/utils/quota';
 import {
   isRuntimeOnlyAuthFile,
+  QUOTA_PROVIDER_TYPES,
   resolveQuotaErrorMessage,
   type QuotaProviderType
 } from '@/features/authFiles/constants';
@@ -73,6 +74,7 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
   });
 
   const refreshQuotaForFile = useCallback(async () => {
+    if (!QUOTA_PROVIDER_TYPES.has(quotaType)) return;
     if (disableControls) return;
     if (isRuntimeOnlyAuthFile(file)) return;
     if (file.disabled) return;
@@ -111,6 +113,7 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
   }, [disableControls, file, quota?.status, quotaType, showNotification, t, updateQuotaState]);
 
   const resetQuotaForFile = useCallback(() => {
+    if (!QUOTA_PROVIDER_TYPES.has(quotaType)) return;
     if (disableControls) return;
     if (isRuntimeOnlyAuthFile(file)) return;
     if (file.disabled) return;
@@ -157,6 +160,8 @@ export function AuthFileQuotaSection(props: AuthFileQuotaSectionProps) {
     t,
     updateQuotaState,
   ]);
+
+  if (!QUOTA_PROVIDER_TYPES.has(quotaType)) return null;
 
   const config = getQuotaConfig(quotaType) as unknown as {
     i18nPrefix: string;

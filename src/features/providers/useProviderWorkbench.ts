@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ampcodeApi, modelsApi, providersApi } from '@/services/api';
+import { modelsApi, providersApi } from '@/services/api';
 import { useAuthStore, useConfigStore } from '@/stores';
 import {
   withDisableAllModelsRule,
@@ -295,10 +295,9 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
     setIsFetching(true);
     setErrorMessage(null);
     try {
-      const [configResult, vertexResult, ampcodeResult, openaiResult] = await Promise.allSettled([
+      const [configResult, vertexResult, openaiResult] = await Promise.allSettled([
         fetchConfig(undefined, true),
         providersApi.getVertexConfigs(),
-        ampcodeApi.getAmpcode(),
         providersApi.getOpenAIProviders(),
       ]);
       if (configResult.status !== 'fulfilled') {
@@ -307,10 +306,6 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
       if (vertexResult.status === 'fulfilled') {
         updateConfigValue('vertex-api-key', vertexResult.value || []);
         clearCache('vertex-api-key');
-      }
-      if (ampcodeResult.status === 'fulfilled') {
-        updateConfigValue('ampcode', ampcodeResult.value);
-        clearCache('ampcode');
       }
       if (openaiResult.status === 'fulfilled') {
         updateConfigValue('openai-compatibility', openaiResult.value || []);
@@ -448,7 +443,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
           next.push(buildOpenAIConfig(input));
           await persistOpenAIConfigs(next);
         } else if (brand === 'ampcode') {
-          throw new Error('Use saveAmpcode for ampcode create/update');
+          throw new Error('Ampcode is no longer supported by CLIProxyAPI.');
         }
         refreshSnapshot();
       } finally {
@@ -498,7 +493,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
           list[idx] = buildOpenAIConfig(input, existing);
           await persistOpenAIConfigs(list);
         } else if (brand === 'ampcode') {
-          throw new Error('Use saveAmpcode for ampcode update');
+          throw new Error('Ampcode is no longer supported by CLIProxyAPI.');
         }
         refreshSnapshot();
       } finally {
@@ -547,13 +542,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
           updateConfigValue('openai-compatibility', next);
           clearCache('openai-compatibility');
         } else if (sel.brand === 'ampcode') {
-          await Promise.allSettled([
-            ampcodeApi.clearUpstreamUrl(),
-            ampcodeApi.clearUpstreamApiKey(),
-            ampcodeApi.clearModelMappings(),
-          ]);
-          updateConfigValue('ampcode', {});
-          clearCache('ampcode');
+          throw new Error('Ampcode is no longer supported by CLIProxyAPI.');
         }
         refreshSnapshot();
       } finally {
@@ -605,7 +594,7 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
             clearCache('openai-compatibility');
           }
         } else if (brand === 'ampcode') {
-          /* ampcode toggle 不支持,跳过 */
+          throw new Error('Ampcode is no longer supported by CLIProxyAPI.');
         }
         refreshSnapshot();
       } finally {
@@ -624,47 +613,11 @@ export function useProviderWorkbench(): UseProviderWorkbenchResult {
     ]
   );
 
-  const saveAmpcode = useCallback(
-    async (next: AmpcodeConfig) => {
-      setMutating(true);
-      try {
-        // 细粒度 PUT 序列以保留兼容性
-        const url = (next.upstreamUrl ?? '').trim();
-        if (url) {
-          await ampcodeApi.updateUpstreamUrl(url);
-        } else {
-          await ampcodeApi.clearUpstreamUrl();
-        }
-
-        const fallbackKey = (next.upstreamApiKey ?? '').trim();
-        if (fallbackKey) {
-          await ampcodeApi.updateUpstreamApiKey(fallbackKey);
-        } else {
-          await ampcodeApi.clearUpstreamApiKey();
-        }
-
-        if (Array.isArray(next.upstreamApiKeys) && next.upstreamApiKeys.length) {
-          await ampcodeApi.saveUpstreamApiKeys(next.upstreamApiKeys);
-        } else {
-          await ampcodeApi.saveUpstreamApiKeys([]);
-        }
-
-        if (Array.isArray(next.modelMappings) && next.modelMappings.length) {
-          await ampcodeApi.saveModelMappings(next.modelMappings);
-        } else {
-          await ampcodeApi.clearModelMappings();
-        }
-
-        await ampcodeApi.updateForceModelMappings(next.forceModelMappings === true);
-
-        updateConfigValue('ampcode', next);
-        clearCache('ampcode');
-        refreshSnapshot();
-      } finally {
-        setMutating(false);
-      }
+  const saveAmpcode = useCallback<UseProviderWorkbenchResult['saveAmpcode']>(
+    async () => {
+      throw new Error('Ampcode is no longer supported by CLIProxyAPI.');
     },
-    [clearCache, refreshSnapshot, updateConfigValue]
+    []
   );
 
   const syncProviderModels = useCallback(

@@ -97,6 +97,7 @@ const normalizePluginEntry = (value: unknown): PluginListEntry | null => {
     enabled: value.enabled !== false,
     effectiveEnabled: asBoolean(value.effective_enabled),
     supportsOAuth: asBoolean(value.supports_oauth),
+    oauthProvider: asString(value.oauth_provider).trim().toLowerCase(),
     logo: asString(value.logo || metadata?.logo).trim(),
     configFields: configFields.length > 0 ? configFields : metadata?.configFields ?? [],
     menus: normalizeMenus(value.menus),

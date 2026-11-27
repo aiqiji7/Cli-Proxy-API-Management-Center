@@ -4,7 +4,7 @@ import { Sheet } from '@/components/ui/Sheet';
 import { IconLoader2, IconPencil } from '@/components/ui/icons';
 import type { ProviderRecentUsageMap } from '@/components/providers/utils';
 import { useNotificationStore } from '@/stores';
-import { PROVIDER_DESCRIPTORS } from '../descriptors';
+import { PROVIDER_BRAND_ORDER, PROVIDER_DESCRIPTORS } from '../descriptors';
 import type {
   ProviderBrand,
   ProviderEntryFormInput,
@@ -154,6 +154,9 @@ export function ProviderSheet({
     },
     [isDirty, mutationDisabled, onUpdated, workbench]
   );
+
+  // Persisted or stale sheet state must not reopen retired provider forms.
+  if (!PROVIDER_BRAND_ORDER.includes(state.brand)) return null;
 
   const renderBody = () => {
     if (state.mode === 'detail') {

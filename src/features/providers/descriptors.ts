@@ -151,7 +151,6 @@ export const PROVIDER_BRAND_ORDER: ProviderBrand[] = [
   'claude',
   'vertex',
   'openaiCompatibility',
-  'ampcode',
 ];
 
 export const PROVIDER_PATHS: Record<ProviderBrand, string> = {

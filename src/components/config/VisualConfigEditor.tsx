@@ -1268,17 +1268,6 @@ export function VisualConfigEditor({
                       disabled={disabled}
                       onChange={(wsAuth) => onChange({ wsAuth })}
                     />
-                    <ToggleRow
-                      title={t(
-                        'config_management.visual.sections.network.enable_gemini_cli_endpoint'
-                      )}
-                      description={t(
-                        'config_management.visual.sections.network.enable_gemini_cli_endpoint_desc'
-                      )}
-                      checked={values.enableGeminiCliEndpoint}
-                      disabled={disabled}
-                      onChange={(enableGeminiCliEndpoint) => onChange({ enableGeminiCliEndpoint })}
-                    />
                   </SectionGrid>
                 </SectionStack>
               </SectionSubsection>
